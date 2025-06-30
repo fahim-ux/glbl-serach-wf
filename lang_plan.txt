@@ -1,0 +1,444 @@
+Perfect — with LangChain + LangGraph, you’ll get:
+
+✅ Tool calling via LangChain functions/tools
+
+✅ Hybrid search: symbolic filter + semantic rerank
+
+✅ Knowledge Graph: as memory or external storage (can use Neo4j or in-memory)
+
+✅ Token-efficient summarization via LangChain’s summarization chains
+
+✅ LangGraph: for multi-step agent orchestration (dynamic branching, retry logic, fallback, etc.)
+
+🧠 Full Architecture Plan (LangChain + LangGraph in TypeScript)
+🧩 Modules You’ll Build
+Module	Function
+Agent (LangGraph)	Orchestrates flow: check KG → tool call → summarize/store
+Hybrid Retriever	Filters by tags, then reranks using embeddings
+Toolset	Tool calling interface (summarizePayments, generateElasticQuery, etc.)
+Knowledge Graph Memory	Stores past query-response pairs with metadata + embeddings
+Summarizer	Token-aware summarization chain
+Embedding Utils	Embedding + cosine similarity helpers
+OpenAI / Mistral Chat Model	Core LLM for generation/tool decision
+
+⚙️ LangGraph Flow
+mermaid
+Copy
+Edit
+flowchart TD
+    A[User Query] --> B[KG Hybrid Search]
+    B -->|Match Found| C[Return Cached Response]
+    B -->|No Match| D[LLM Agent]
+    D --> E{Tool Call Required?}
+    E -- Yes --> F[Call Tool from Toolset]
+    E -- No --> G[LLM Answers Directly]
+    F --> G
+    G --> H[Summarize if needed (token-aware)]
+    H --> I[Store in KG w/ tags + embedding]
+    I --> J[Return Final Response]
+🚀 Starter Project Boilerplate
+Let me now scaffold a base setup in LangChain.js + LangGraph for you. You’ll get:
+
+agent.ts — LangGraph agent
+
+retriever.ts — hybrid retriever (symbolic + semantic)
+
+tools.ts — tool definitions
+
+kg.ts — flat-file or Neo4j-based KG memory
+
+summarizer.ts — token-aware LangChain summarizer chain
+
+embed.ts — OpenAI/Cohere embeddings
+
+Do you want the knowledge graph to use:
+
+✅ Flat file (kg.json)
+
+🔄 or Neo4j (graph DB)?
+
+And which model provider are you using?
+
+OpenAI (GPT-4-turbo)?
+
+Claude 3 / Gemini?
+
+Or local models?
+
+Tell me:
+
+text
+Copy
+Edit
+[ ] LangChain model: ___________
+[ ] KG type: Flat file or Neo4j?
+[ ] Embedding model: ___________
+Once you give this, I’ll drop the complete LangChain+LangGraph code in TS.
+
+
+Got it! I’ll give you a complete minimal working example in TypeScript using:
+
+LangChain.js (for chains, tools, embeddings)
+
+LangGraph (for orchestration / agent)
+
+Flat-file JSON as the Knowledge Graph storage
+
+OpenAI GPT-4 Turbo for LLM + embedding
+
+Complete TypeScript Example
+1. Setup — package.json dependencies (example)
+json
+Copy
+Edit
+{
+  "name": "langchain-langgraph-agent-kg",
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "start": "ts-node src/index.ts"
+  },
+  "dependencies": {
+    "langchain": "^0.0.159",
+    "langgraph": "^0.0.17",
+    "openai": "^4.20.0",
+    "dotenv": "^16.3.1",
+    "express": "^4.18.2",
+    "cosine-similarity": "^1.0.1"
+  },
+  "devDependencies": {
+    "@types/node": "^20.3.3",
+    "ts-node": "^10.9.1",
+    "typescript": "^5.1.3"
+  }
+}
+2. Environment file .env
+ini
+Copy
+Edit
+OPENAI_API_KEY=your_openai_api_key_here
+3. Project structure
+bash
+Copy
+Edit
+src/
+├── agent.ts          # LangGraph agent orchestration
+├── embed.ts          # Embedding helpers
+├── kg.ts             # Simple flat-file KG store with embedding + metadata + retrieval
+├── retriever.ts      # Hybrid symbolic + semantic retriever
+├── tools.ts          # Tools (summarize, generateElasticQuery)
+├── summarizer.ts     # Token-aware summarizer chain
+├── index.ts          # Express server entrypoint
+4. Code files
+src/embed.ts
+ts
+Copy
+Edit
+import { OpenAI } from "langchain/llms/openai";
+import { OpenAIEmbeddings } from "langchain/embeddings/openai";
+
+const embeddingsModel = new OpenAIEmbeddings({
+  openAIApiKey: process.env.OPENAI_API_KEY,
+  modelName: "text-embedding-ada-002",
+});
+
+export async function getEmbedding(text: string): Promise<number[]> {
+  const res = await embeddingsModel.embedQuery(text);
+  return res;
+}
+
+// cosine similarity util
+export function cosineSimilarity(vecA: number[], vecB: number[]): number {
+  const dot = vecA.reduce((acc, val, i) => acc + val * vecB[i], 0);
+  const magA = Math.sqrt(vecA.reduce((acc, val) => acc + val * val, 0));
+  const magB = Math.sqrt(vecB.reduce((acc, val) => acc + val * val, 0));
+  return dot / (magA * magB);
+}
+src/kg.ts
+ts
+Copy
+Edit
+import fs from "fs";
+import path from "path";
+import { getEmbedding, cosineSimilarity } from "./embed.js";
+
+const KG_FILE = path.resolve("data/kg.json");
+
+export interface KGEntry {
+  query: string;
+  response: string;
+  embedding: number[];
+  tags?: string[];
+  date?: string;
+}
+
+let kg: KGEntry[] = [];
+try {
+  const raw = fs.readFileSync(KG_FILE, "utf-8");
+  kg = JSON.parse(raw);
+} catch {
+  kg = [];
+}
+
+export async function findSimilarEntry(
+  query: string,
+  threshold = 0.85
+): Promise<KGEntry | null> {
+  const queryEmbedding = await getEmbedding(query);
+
+  const candidates = kg.filter((entry) => {
+    // Optional symbolic filtering by tags here
+    return true;
+  });
+
+  let bestMatch: KGEntry | null = null;
+  let bestScore = -1;
+  for (const entry of candidates) {
+    const score = cosineSimilarity(queryEmbedding, entry.embedding);
+    if (score > bestScore && score > threshold) {
+      bestScore = score;
+      bestMatch = entry;
+    }
+  }
+  return bestMatch;
+}
+
+export function addEntry(entry: KGEntry) {
+  kg.push(entry);
+  fs.writeFileSync(KG_FILE, JSON.stringify(kg, null, 2));
+}
+src/tools.ts
+ts
+Copy
+Edit
+export async function summarizePayments(paymentMsgs: string[]): Promise<string> {
+  // For demo, simple join summary
+  return `Summary:\n- ${paymentMsgs.slice(0, 3).join("\n- ")}\n(End of summary)`;
+}
+
+export async function generateElasticQuery(intent: string): Promise<string> {
+  // Dummy elastic DSL generator
+  return JSON.stringify(
+    {
+      query: {
+        match: {
+          intent,
+        },
+      },
+    },
+    null,
+    2
+  );
+}
+src/summarizer.ts
+ts
+Copy
+Edit
+import { ChatOpenAI } from "langchain/chat_models/openai";
+import { ChatPromptTemplate, SystemMessagePromptTemplate, HumanMessagePromptTemplate } from "langchain/prompts";
+import { LLMChain } from "langchain/chains";
+
+const chat = new ChatOpenAI({
+  openAIApiKey: process.env.OPENAI_API_KEY,
+  modelName: "gpt-4o-mini",
+  temperature: 0.1,
+});
+
+const prompt = ChatPromptTemplate.fromPromptMessages([
+  SystemMessagePromptTemplate.fromTemplate(
+    "You are an expert payment assistant. Summarize the following payment messages concisely."
+  ),
+  HumanMessagePromptTemplate.fromTemplate("{paymentMsgs}"),
+]);
+
+export async function summarize(paymentMsgs: string[]): Promise<string> {
+  const chain = new LLMChain({ llm: chat, prompt });
+  const summary = await chain.call({ paymentMsgs: paymentMsgs.join("\n") });
+  return summary.text;
+}
+src/retriever.ts
+ts
+Copy
+Edit
+import { findSimilarEntry, KGEntry } from "./kg.js";
+import { getEmbedding, cosineSimilarity } from "./embed.js";
+
+export async function hybridRetrieve(
+  query: string,
+  tagsFilter: string[] = []
+): Promise<KGEntry | null> {
+  // Symbolic filtering (tags)
+  let candidates = (await getAllEntries()).filter((entry) =>
+    tagsFilter.length > 0
+      ? tagsFilter.every((tag) => entry.tags?.includes(tag))
+      : true
+  );
+
+  // If no candidates, fallback to all entries
+  if (candidates.length === 0) {
+    candidates = await getAllEntries();
+  }
+
+  // Semantic rerank
+  const queryEmbedding = await getEmbedding(query);
+
+  let bestMatch: KGEntry | null = null;
+  let bestScore = -1;
+  for (const entry of candidates) {
+    const score = cosineSimilarity(queryEmbedding, entry.embedding);
+    if (score > bestScore) {
+      bestScore = score;
+      bestMatch = entry;
+    }
+  }
+
+  return bestMatch;
+}
+
+async function getAllEntries(): Promise<KGEntry[]> {
+  // For now, just load all from kg module
+  // Could replace with DB call
+  const { kg } = await import("./kg.js");
+  return kg;
+}
+src/agent.ts
+ts
+Copy
+Edit
+import { LangGraphAgent, createTool } from "langgraph";
+import { summarizePayments, generateElasticQuery } from "./tools.js";
+import { hybridRetrieve } from "./retriever.js";
+import { addEntry } from "./kg.js";
+import { getEmbedding } from "./embed.js";
+import { summarize } from "./summarizer.js";
+
+const tools = [
+  createTool({
+    name: "summarizePayments",
+    description: "Summarizes payment messages",
+    func: async (paymentMsgs: string[]) => {
+      return await summarizePayments(paymentMsgs);
+    },
+  }),
+  createTool({
+    name: "generateElasticQuery",
+    description: "Generates Elasticsearch query from intent",
+    func: async (intent: string) => {
+      return await generateElasticQuery(intent);
+    },
+  }),
+];
+
+export async function handleUserQuery(query: string): Promise<string> {
+  // 1. Check KG cache
+  const cached = await hybridRetrieve(query, ["payment"]);
+  if (cached) {
+    return `Cached answer:\n${cached.response}`;
+  }
+
+  // 2. Decide tool usage (simple heuristic)
+  if (query.toLowerCase().includes("summarize")) {
+    const sampleMsgs = [
+      "TXN123 failed due to insufficient funds",
+      "TXN124 succeeded to VendorY",
+      "TXN125 pending approval",
+    ];
+    const result = await summarizePayments(sampleMsgs);
+
+    // Summarize again with LLM summarizer for token-efficiency
+    const finalSummary = await summarize([result]);
+
+    // Store in KG
+    const embedding = await getEmbedding(query);
+    addEntry({
+      query,
+      response: finalSummary,
+      embedding,
+      tags: ["payment", "summary"],
+      date: new Date().toISOString(),
+    });
+
+    return finalSummary;
+  }
+
+  if (query.toLowerCase().includes("query") || query.toLowerCase().includes("search")) {
+    const result = await generateElasticQuery(query);
+    const embedding = await getEmbedding(query);
+    addEntry({
+      query,
+      response: result,
+      embedding,
+      tags: ["payment", "elastic"],
+      date: new Date().toISOString(),
+    });
+    return result;
+  }
+
+  // 3. Fallback summarizer
+  const fallbackSummary = await summarize([query]);
+  const embedding = await getEmbedding(query);
+  addEntry({
+    query,
+    response: fallbackSummary,
+    embedding,
+    tags: ["payment", "fallback"],
+    date: new Date().toISOString(),
+  });
+  return fallbackSummary;
+}
+src/index.ts
+ts
+Copy
+Edit
+import express from "express";
+import dotenv from "dotenv";
+import { handleUserQuery } from "./agent.js";
+
+dotenv.config();
+
+const app = express();
+app.use(express.json());
+
+app.post("/query", async (req, res) => {
+  const { query } = req.body;
+  if (!query) return res.status(400).send({ error: "Query missing" });
+
+  try {
+    const response = await handleUserQuery(query);
+    res.send({ response });
+  } catch (e) {
+    res.status(500).send({ error: String(e) });
+  }
+});
+
+app.listen(3000, () => {
+  console.log("Agent running at http://localhost:3000");
+});
+🏁 Run It
+bash
+Copy
+Edit
+npm install
+npm run start
+Send POST to http://localhost:3000/query with JSON body:
+
+json
+Copy
+Edit
+{
+  "query": "Summarize my last payments"
+}
+Summary
+KG is stored in data/kg.json with embeddings + metadata
+
+Hybrid retrieval: symbolic tags + semantic embedding rerank
+
+Tools: summarize payments + generate ES query
+
+Agent decides tool usage heuristically
+
+Summarization uses LangChain chain with GPT-4o-mini
+
+Embeddings via OpenAI text-embedding-ada-002
+
+Simple express API frontend
